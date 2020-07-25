@@ -15,12 +15,13 @@
 #define VOL_DN 4//减小音量
 File root;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
 File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
+int mode;//一个饼，按键模块切换模式：单曲循环、顺序播放、随机播放
 int cur;//当前曲目
 TMRpcm music;
 void hang()//等待摇杆回到初始状态
 {
   int x,y,b;
-  while(1){
+  while(1){//也要考虑等的过程中歌曲完毕的情况
     b = digitalRead(BUTTON);
     x = analogRead(VX);
     y = analogRead(VY);
