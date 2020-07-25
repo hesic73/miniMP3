@@ -14,6 +14,8 @@
 #define VOL_DN 4//减小音量
 File root;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
 File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
+int n_all;//歌曲的位次
+int cur;//当前曲目
 TMRpcm music;
 void hang()//等待摇杆回到初始状态
 {
@@ -62,9 +64,19 @@ void setup() {
     return;
   }
   music.setVolume(5);    //   设置音量0 ~7
-  music.quality(1);      
+  music.quality(1);    
+    
   root=SD.open("/");
-  
+  wavfile=root.openNextFile() ;
+  if(!wavfile){
+    Serial.println("No file available.");
+  }
+  n_all=1;//先数一下一共有多少歌
+  while(!wavfile){
+    wavfile=root.openNextFile();
+    n_all++;
+    wavfile.close();
+  }
 }
 
 void loop() {
