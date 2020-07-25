@@ -2,7 +2,7 @@
 #include "TMRpcm.h"
 #include "SPI.h"
 #define SDcard 4
-#define BOTTON 2
+#define BUTTON 2
 #define VX A0
 #define VY A1
 //用户行为
@@ -19,16 +19,16 @@ void hang()//等待摇杆回到初始状态
 {
   int x,y,b;
   while(1){
-    b = digitalRead(BOTTON);
+    b = digitalRead(BUTTON);
     x = analogRead(VX);
     y = analogRead(VY);
     if(b&&(x>400&&x<600)&&(y>400&&y<600)) break;
   }
 }
-int input()/摇动且回复到初始状态算一次输入
+int input()//摇动且回复到初始状态算一次输入
 {
   int x, y;
-  x = digitalRead(BOTTON);
+  x = digitalRead(BUTTON);
   if (!x){
     hang();
     return PAUSE;
@@ -53,11 +53,11 @@ int input()/摇动且回复到初始状态算一次输入
   }
   return NOP;
 }
-void setup() {/
-  pinMode(BOTTUN,INPUT_PULLUP);
+void setup() {
+  pinMode(BUTTON,INPUT_PULLUP);
   music.speakerPin = 9; //设置音频输出针脚 9
   Serial.begin(9600);
-  if (!SD.begin(SD_ChipSelectPin)) {
+  if (!SD.begin(SDcard)) {
     Serial.println("SD fail");
     return;
   }
