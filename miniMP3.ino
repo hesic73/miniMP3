@@ -2,6 +2,7 @@
 #include "TMRpcm.h"
 #include "SPI.h"
 #define SDcard 4
+#define SOUND 9
 #define BUTTON 2
 #define VX A0
 #define VY A1
@@ -14,7 +15,6 @@
 #define VOL_DN 4//减小音量
 File root;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
 File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
-int n_all;//歌曲的位次
 int cur;//当前曲目
 TMRpcm music;
 void hang()//等待摇杆回到初始状态
@@ -57,7 +57,7 @@ int input()//摇动且回复到初始状态算一次输入
 }
 void setup() {
   pinMode(BUTTON,INPUT_PULLUP);
-  music.speakerPin = 9; //设置音频输出针脚 9
+  music.speakerPin = SOUND;
   Serial.begin(9600);
   if (!SD.begin(SDcard)) {
     Serial.println("SD fail");
@@ -70,13 +70,11 @@ void setup() {
   wavfile=root.openNextFile() ;
   if(!wavfile){
     Serial.println("No file available.");
+    return ;
   }
-  n_all=1;//先数一下一共有多少歌
-  while(!wavfile){
-    wavfile=root.openNextFile();
-    n_all++;
-    wavfile.close();
-  }
+  cur=1;
+  music.play(wavfile.name());//播放第一首曲子
+  wavfile.close();
 }
 
 void loop() {
