@@ -29,6 +29,8 @@ void isr() {
 void hang();//等待摇杆回到初始状态
 int input();//摇动且回复到初始状态算一次输入
 void autonext();//当一首歌曲播放完毕时，按照模式选择播放下一首歌
+void changesong(int option);//摇动摇杆换歌 0 左摇 1 右摇
+void randomsong();//随机切一首歌
 void setup() {
   //串口初始化
   pinMode(BUTTON, INPUT_PULLUP);
@@ -54,23 +56,22 @@ void setup() {
     totalsong++;
     wavfile.close();
   }
-  dir.rewindDirectory();
-  wavfile = dir.openNextFile();
   if (totalsong == 0) {
     Serial.println("Empty directory.");
     return ;
   }
+  dir.rewindDirectory();
+  wavfile = dir.openNextFile();
   cur = 1;
   music.play(wavfile.name());//播放第一首曲子
-  wavfile.close();
 }
 
 void loop() {
   switch (input()) {
     case NOP: break;
     case PAUSE: music.pause(); break;
-    case PREV: break;
-    case NEXT: break;
+    case PREV: changesong(0);break;
+    case NEXT: changesong(1);break;
     case VOL_UP: vol = MAX(vol + 1, 7); music.setVolume(vol); break;
     case VOL_DN: vol = MIN(vol - 1, 0); music.setVolume(vol); break;
   }
@@ -128,18 +129,48 @@ void autonext()
         wavfile = dir.openNextFile();
       }
     } else if (mode == 2) { //随机播放,有可能是同一首歌
-      wavfile.close();
+      randomsong();
+    }
+    music.play(wavfile.name());//单曲循环文件没有变化
+  }
+}
+void randomsong()
+{
+  wavfile.close();
       randomSeed(analogRead(A2));
       int temp;
       temp = random(0, totalsong) + 1;
       cur = temp;
       dir.rewindDirectory();
-        wavfile = dir.openNextFile();
+      wavfile = dir.openNextFile();
       while (--temp) {
         wavfile.close();
         wavfile = dir.openNextFile();
       }
+}
+void changesong(int option)
+{
+  if(mode==2){//随机播放向左向右摇都是一样的
+    randomsong();
+  }else {//单曲循环顺序播放就是简单的加减
+    if(option){
+      wavfile.close();
+      wavfile = dir.openNextFile();
+      cur++;
+      if (!wavfile) {
+        cur = 1;
+        dir.rewindDirectory();
+        wavfile = dir.openNextFile();
+      }
+    }else {
+      cur=(cur==1)?totalsong:(cur-1);
+      dir.rewindDirectory();
+      int i;
+      for(i=0;i<cur;i++){
+        wavfile.close();
+        wavfile=dir.openNextFile();
+      }
     }
-    music.play(wavfile.name());//单曲循环文件没有变化
   }
+  music.play(wavfile.name());
 }
