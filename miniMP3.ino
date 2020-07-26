@@ -16,7 +16,7 @@
 #define VOL_DN 4//减小音量
 #define MAX(x,y) ((x)>(y)?(x):(y))
 #define MIN(x,y) ((x)<(y)?(x):(y))
-File root;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
+File dir;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
 File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
 char mode;//一个饼，按键模块切换模式：单曲循环1、顺序播放0、随机播放2
 char vol;//音量,用于显示
@@ -26,12 +26,14 @@ TMRpcm music;
 void isr(){mode=(mode+1)%3;}//简单地切模式
 void hang();//等待摇杆回到初始状态
 int input();//摇动且回复到初始状态算一次输入
+void autonext();//当一首歌曲播放完毕时，按照模式选择播放下一首歌
 void setup() {
-  //先初始化，然后播放第一首歌
+  //串口初始化
   pinMode(BUTTON,INPUT_PULLUP);
   pinMode(MODE,INPUT_PULLUP);
   mode=0;
   attachInterrupt(1,isr,FALLING);
+  //音乐播放初始化
   music.speakerPin = SOUND;
   Serial.begin(9600);
   if (!SD.begin(SDcard)) {
@@ -40,12 +42,19 @@ void setup() {
   }
   vol=5;
   music.setVolume(vol);   
-  music.quality(1);    
-  root=SD.open("/");
-  
-  wavfile=root.openNextFile() ;
-  if(!wavfile){
-    Serial.println("No file available.");
+  music.quality(1); 
+  //文件初始化
+  dir=SD.open("/");
+  totalsong=0;
+  while(1){
+    wavfile=dir.openNextFile() ;
+    if(!wavfile) break;
+    totalsong++;
+    wavfile.close();
+  }
+  wavfile=dir.rewindDirectory();
+  if(totalsong==0){
+    Serial.println("Empty directory.");
     return ;
   }
   cur=1;
@@ -100,4 +109,30 @@ int input()
     return VOL_DN;
   }
   return NOP;
+}
+void autonext()
+{
+  if(!music.isPlaying()){//如果这首歌播完了，选择播放的下一首
+      if(mode==0){//顺序播放
+        wavfile.close();
+        wavfile=dir.openNextFile();
+        cur++;
+        if(!wavfile){
+          cur=1;
+          wavfile=dir.rewindDirectory();
+        }
+      }else if(mode==2){//随机播放,有可能是同一首歌
+        wavfile.close();
+        randomSeed(analogRead(A2));
+        int temp;
+        temp=random(0,totalsong)+1;
+        cur=temp;
+        wavfile=dir.rewindDirectory();
+        while(--temp){
+          wavfile.close();
+          wavfile=dir.openNextFile();
+        }
+      }
+      music.play(wavfile.name());//单曲循环文件没有变化
+    }
 }
