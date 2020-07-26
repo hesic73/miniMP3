@@ -54,7 +54,8 @@ void setup() {
     totalsong++;
     wavfile.close();
   }
-  wavfile = dir.rewindDirectory();
+  dir.rewindDirectory();
+  wavfile = dir.openNextFile();
   if (totalsong == 0) {
     Serial.println("Empty directory.");
     return ;
@@ -82,6 +83,7 @@ void hang()
     x = analogRead(VX);
     y = analogRead(VY);
     if (b && (x > 400 && x < 600) && (y > 400 && y < 600)) break;
+    autonext();
   }
 }
 int input()
@@ -110,6 +112,7 @@ int input()
     hang();
     return VOL_DN;
   }
+  hang();
   return NOP;
 }
 void autonext()
@@ -121,7 +124,8 @@ void autonext()
       cur++;
       if (!wavfile) {
         cur = 1;
-        wavfile = dir.rewindDirectory();
+        dir.rewindDirectory();
+        wavfile = dir.openNextFile();
       }
     } else if (mode == 2) { //随机播放,有可能是同一首歌
       wavfile.close();
@@ -129,7 +133,8 @@ void autonext()
       int temp;
       temp = random(0, totalsong) + 1;
       cur = temp;
-      wavfile = dir.rewindDirectory();
+      dir.rewindDirectory();
+        wavfile = dir.openNextFile();
       while (--temp) {
         wavfile.close();
         wavfile = dir.openNextFile();
