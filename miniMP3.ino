@@ -21,6 +21,7 @@ File dir;//根目录,为简便先假定该目录下全是.wav文件，之后可�
 File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
 char flag = 0; //用于标定用户摇杆操作是否在进行中
 char debounce = 0; //用于标定切换模式按钮
+char pau=0;//歌曲是否暂停
 char option;//选项
 char mode;//按键模块切换模式：单曲循环1、顺序播放0、随机播放2
 char vol;//音量,用于显示
@@ -111,9 +112,9 @@ void user_option()
   if (flag) { //前一个判断也可能更改flag，所以不能直接else
     if (sw && (x > 400 && x < 600) && (y > 400 && y < 600)) { //如果这次复位了
       switch (option) {
-        case PAUSE: music.pause(); break;
-        case PREV: changesong(0); break;
-        case NEXT: changesong(1); break;
+        case PAUSE: music.pause(); pau=!pau;break;
+        case PREV: changesong(0); pau=0;break;
+        case NEXT: changesong(1); pau=0;break;
         case VOL_UP: vol = MAX(vol + 1, 7); music.setVolume(vol); break;
         case VOL_DN: vol = MIN(vol - 1, 0); music.setVolume(vol); break;
       }
