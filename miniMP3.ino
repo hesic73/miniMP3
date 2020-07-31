@@ -12,13 +12,13 @@ double vImag[SAMPLES];
 char data_avgs[xres];
 char y[xres];
 char displayvalue;
-char peaks[xres];
+char peaks[xres]={0};
 arduinoFFT FFT = arduinoFFT();
 U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号的构造函数
 #define SDcard 4//SD卡模块
 #define SOUND 9//音频信号输出引脚
 #define BUTTON 2//摇杆的按键
-#define MODE 3//切换播放模式的按键,这个用外部中断实现
+#define MODE 3//切换播放模式的按键
 #define VX A0 //摇杆方向
 #define VY A1
 //用户行为
@@ -148,6 +148,7 @@ void loop() {
   do {
     autonext();//检测是否需要切歌
     user_option();//检测用户操作
+    genfft();//频谱
     draw();//图形界面
   } while (u8g.nextPage());
 }
