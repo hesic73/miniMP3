@@ -1,26 +1,28 @@
-#include "SD.h"
+#include "SdFat.h"
 #include "TMRpcm.h"
 #include "SPI.h"
 #include"U8glib.h"
-//频谱相关
-#include <arduinoFFT.h>
-#define SAMPLES 64            //Must be a power of 2
-#define  xres 32      // Total number of  columns in the display, must be <= SAMPLES/2
-#define  yres 24
-double vReal[SAMPLES];
-double vImag[SAMPLES];
-char data_avgs[xres];
-char y[xres];
-char displayvalue;
-char peaks[xres]={0};
-arduinoFFT FFT = arduinoFFT();
+/*
+  //频谱相关
+  #include <arduinoFFT.h>
+  #define SAMPLES 64            //Must be a power of 2
+  #define  xres 32      // Total number of  columns in the display, must be <= SAMPLES/2
+  #define  yres 24
+  double vReal[SAMPLES];
+  double vImag[SAMPLES];
+  char data_avgs[xres];
+  char y[xres];
+  char displayvalue;
+  char peaks[xres]={0};
+  arduinoFFT FFT = arduinoFFT();
+*/
 U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号的构造函数
 #define SDcard 4//SD卡模块
 #define SOUND 9//音频信号输出引脚
 #define BUTTON 2//摇杆的按键
 #define MODE 3//切换播放模式的按键
-#define VX A0 //摇杆方向
-#define VY A1
+#define VX A1 //摇杆方向
+#define VY A2
 //用户行为
 #define PAUSE 0//暂停
 #define PREV 1//前一首
@@ -29,8 +31,9 @@ U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号�
 #define VOL_DN 4//减小音量
 #define MAX(x,y) ((x)>(y)?(x):(y))
 #define MIN(x,y) ((x)<(y)?(x):(y))
-File dir;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
-File wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
+SdFat sd;
+SdFile dir;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
+SdFile wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
 char flag = 0; //用于标定用户摇杆操作是否在进行中
 char debounce = 0; //用于标定切换模式按钮
 char pau = 0; //歌曲是否暂停
@@ -39,6 +42,7 @@ char mode;//按键模块切换模式：单曲循环1、顺序播放0、随机播
 char vol;//音量,用于显示
 unsigned int totalsong;//当前目录总曲目
 unsigned int cur;//当前曲目
+char name[36];//歌曲名称
 TMRpcm music;
 //常字符
 const uint8_t dan[] U8G_PROGMEM = {
@@ -82,23 +86,25 @@ const uint8_t xu[] U8G_PROGMEM = {
   0x2F, 0xFE, 0x20, 0x42, 0x20, 0x44, 0x20, 0x40, 0x40, 0x40, 0x40, 0x40, 0x81, 0x40, 0x00, 0x80
 };
 const uint8_t yin[] U8G_PROGMEM = {
-  0x02,0x00,0x01,0x00,0x3F,0xF8,0x00,0x00,0x08,0x20,0x04,0x40,0xFF,0xFE,0x00,0x00,
-0x1F,0xF0,0x10,0x10,0x10,0x10,0x1F,0xF0,0x10,0x10,0x10,0x10,0x1F,0xF0,0x10,0x10
+  0x02, 0x00, 0x01, 0x00, 0x3F, 0xF8, 0x00, 0x00, 0x08, 0x20, 0x04, 0x40, 0xFF, 0xFE, 0x00, 0x00,
+  0x1F, 0xF0, 0x10, 0x10, 0x10, 0x10, 0x1F, 0xF0, 0x10, 0x10, 0x10, 0x10, 0x1F, 0xF0, 0x10, 0x10
 };
 const uint8_t liang[] U8G_PROGMEM = {
-  0x00,0x00,0x1F,0xF0,0x10,0x10,0x1F,0xF0,0x10,0x10,0xFF,0xFE,0x00,0x00,0x1F,0xF0,
-0x11,0x10,0x1F,0xF0,0x11,0x10,0x1F,0xF0,0x01,0x00,0x1F,0xF0,0x01,0x00,0x7F,0xFC
+  0x00, 0x00, 0x1F, 0xF0, 0x10, 0x10, 0x1F, 0xF0, 0x10, 0x10, 0xFF, 0xFE, 0x00, 0x00, 0x1F, 0xF0,
+  0x11, 0x10, 0x1F, 0xF0, 0x11, 0x10, 0x1F, 0xF0, 0x01, 0x00, 0x1F, 0xF0, 0x01, 0x00, 0x7F, 0xFC
 };
-const uint8_t num[8][16] U8G_PROGMEM ={//0-7
-{0x00,0x00,0x00,0x18,0x24,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x24,0x18,0x00,0x00},/*"0",0*/
-{0x00,0x00,0x00,0x08,0x38,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x3E,0x00,0x00},/*"1",1*/
-{0x00,0x00,0x00,0x3C,0x42,0x42,0x42,0x02,0x04,0x08,0x10,0x20,0x42,0x7E,0x00,0x00},/*"2",2*/
-{0x00,0x00,0x00,0x3C,0x42,0x42,0x02,0x04,0x18,0x04,0x02,0x42,0x42,0x3C,0x00,0x00},/*"3",3*/
-{0x00,0x00,0x00,0x04,0x0C,0x0C,0x14,0x24,0x24,0x44,0x7F,0x04,0x04,0x1F,0x00,0x00},/*"4",4*/
-{0x00,0x00,0x00,0x7E,0x40,0x40,0x40,0x78,0x44,0x02,0x02,0x42,0x44,0x38,0x00,0x00},/*"5",5*/
-{0x00,0x00,0x00,0x18,0x24,0x40,0x40,0x5C,0x62,0x42,0x42,0x42,0x22,0x1C,0x00,0x00},/*"6",6*/
-{0x00,0x00,0x00,0x7E,0x42,0x04,0x04,0x08,0x08,0x10,0x10,0x10,0x10,0x10,0x00,0x00}/*"7",7*/
+
+const uint8_t num[8][16] U8G_PROGMEM = { //0-7
+  {0x00, 0x00, 0x00, 0x18, 0x24, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x24, 0x18, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x08, 0x38, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x42, 0x02, 0x04, 0x08, 0x10, 0x20, 0x42, 0x7E, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x02, 0x04, 0x18, 0x04, 0x02, 0x42, 0x42, 0x3C, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x04, 0x0C, 0x0C, 0x14, 0x24, 0x24, 0x44, 0x7F, 0x04, 0x04, 0x1F, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x7E, 0x40, 0x40, 0x40, 0x78, 0x44, 0x02, 0x02, 0x42, 0x44, 0x38, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x18, 0x24, 0x40, 0x40, 0x5C, 0x62, 0x42, 0x42, 0x42, 0x22, 0x1C, 0x00, 0x00}, 
+  {0x00, 0x00, 0x00, 0x7E, 0x42, 0x04, 0x04, 0x08, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00} 
 };
+
 void autonext();//当一首歌曲播放完毕时，按照模式选择播放下一首歌
 void user_option();//用户输入判定
 void changesong(int option);//摇动摇杆换歌 0 左摇 1 右摇
@@ -112,9 +118,8 @@ void setup() {
   //音乐播放初始化
   music.speakerPin = SOUND;
   Serial.begin(9600);
-  if (!SD.begin(SDcard)) {
-    Serial.println("SD fail");
-    return;
+  if (!sd.begin(4, SD_SCK_MHZ(50))) {
+    sd.initErrorHalt();
   }
   vol = 5;
   music.setVolume(vol);
@@ -124,11 +129,11 @@ void setup() {
   ADMUX = 0b00000000;
   delay(50);
   //文件初始化
-  dir = SD.open("/");
+  if (!dir.open("/music/", O_RDONLY)) {
+    sd.errorHalt("open root failed");
+  }
   totalsong = 0;
-  while (1) {
-    wavfile = dir.openNextFile() ;
-    if (!wavfile) break;
+  while (wavfile.openNext(&dir, O_RDONLY)) {
     totalsong++;
     wavfile.close();
   }
@@ -136,10 +141,11 @@ void setup() {
     Serial.println("Empty directory.");
     return ;
   }
-  dir.rewindDirectory();
-  wavfile = dir.openNextFile();
+  dir.rewind();
+  wavfile.openNext(&dir, O_RDONLY);
   cur = 1;
-  music.play(wavfile.name());//播放第一首曲子
+  wavfile.getName(name, 36);
+  music.play(name);//播放第一首曲子
 
 }
 
@@ -148,7 +154,7 @@ void loop() {
   do {
     autonext();//检测是否需要切歌
     user_option();//检测用户操作
-    genfft();//频谱
+    //genfft();//频谱
     draw();//图形界面
   } while (u8g.nextPage());
 }
@@ -157,17 +163,17 @@ void autonext()
   if (!music.isPlaying()) { //如果这首歌播完了，选择播放的下一首
     if (mode == 0) { //顺序播放
       wavfile.close();
-      wavfile = dir.openNextFile();
       cur++;
-      if (!wavfile) {
+      if (!wavfile.openNext(&dir)) {
         cur = 1;
-        dir.rewindDirectory();
-        wavfile = dir.openNextFile();
+        dir.rewind();
+        wavfile.openNext(&dir);
       }
     } else if (mode == 2) { //随机播放,有可能是同一首歌
       randomsong();
     }
-    music.play(wavfile.name());//单曲循环文件没有变化
+    wavfile.getName(name, 36);
+    music.play(name);//单曲循环文件没有变化
   }
 }
 void user_option()
@@ -217,11 +223,11 @@ void randomsong()
   int temp;
   temp = random(0, totalsong) + 1;
   cur = temp;
-  dir.rewindDirectory();
-  wavfile = dir.openNextFile();
+  dir.rewind();
+  wavfile.openNext(&dir);
   while (--temp) {
     wavfile.close();
-    wavfile = dir.openNextFile();
+    wavfile.openNext(&dir);
   }
 }
 void changesong(int option)
@@ -231,24 +237,24 @@ void changesong(int option)
   } else {//单曲循环顺序播放就是简单的加减
     if (option) {
       wavfile.close();
-      wavfile = dir.openNextFile();
       cur++;
-      if (!wavfile) {
+      if (!wavfile.openNext(&dir)) {
         cur = 1;
-        dir.rewindDirectory();
-        wavfile = dir.openNextFile();
+        dir.rewind();
+        wavfile.openNext(&dir);
       }
     } else {
       cur = (cur == 1) ? totalsong : (cur - 1);
-      dir.rewindDirectory();
+      dir.rewind();
       int i;
       for (i = 0; i < cur; i++) {
         wavfile.close();
-        wavfile = dir.openNextFile();
+        wavfile.openNext(&dir);
       }
     }
   }
-  music.play(wavfile.name());
+  wavfile.getName(name, 36);
+  music.play(name);
 }
 void draw()
 {
@@ -263,15 +269,17 @@ void draw()
     u8g.drawBox(116, 2, 2, 8);
     u8g.drawBox(122, 2, 2, 8);
   }
-  u8g.drawBitmapP(64+8, 0, 2, 16, yin); u8g.drawBitmapP(80+8, 0, 2, 16, liang);
-  u8g.drawBitmapP(96+8, 0, 1, 16, num[vol]);
-  int i;
-  for (i = 0; i < 32; i++) {
+  u8g.drawBitmapP(64 + 8, 0, 2, 16, yin); u8g.drawBitmapP(80 + 8, 0, 2, 16, liang);
+  u8g.drawBitmapP(96 + 8, 0, 1, 16, num[vol]);
+  /*
+    int i;
+    for (i = 0; i < 32; i++) {
     u8g.drawBox(16 + 3 * i, 60 - y[i], 3, y[i]);
-  }
+    }
+  */
 }
-void genfft()
-{
+/*void genfft()
+  {
   for (int i = 0; i < SAMPLES; i++)
   {
     while (!(ADCSRA & 0x10));       // wait for ADC to complete current conversion ie ADIF bit set
@@ -309,3 +317,4 @@ void genfft()
     y[i] = peaks[i];
   }
 }
+*/
