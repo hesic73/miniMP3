@@ -118,7 +118,6 @@ void setup() {
   pinMode(RIGHT, INPUT_PULLUP);
   //音乐播放初始化
   music.speakerPin = SOUND;
-  Serial.begin(9600);
   if (!sd.begin(4, SD_SCK_MHZ(50))) {
     sd.initErrorHalt();
   }
@@ -139,7 +138,6 @@ void setup() {
     wavfile.close();
   }
   if (totalsong == 0) {
-    Serial.println("nil");
     while (1) ;
   }
   dir.rewind();
@@ -205,11 +203,6 @@ void user_option()
     if (!changevol) { //如果按得够久调整音量，便不执行切歌
       changesong(0);
       pau = 0;
-      Serial.println("Prev song.");
-      Serial.print("Time:");
-      Serial.println(millis() - t);
-      Serial.println((int)changevol);
-      Serial.println((int)flag_vary);
     }
     flag_vary = 0; //操作结束
     lock = 0; //解锁
@@ -219,7 +212,6 @@ void user_option()
     if (millis() - t > 1000) { //按的时间超过1秒
       vol = MAX(vol - 1, 0);
       music.setVolume(vol);
-      Serial.println("Volume down.");
       t = millis(); //重新开始计时
       changevol = 1; //已经改过音量
     }
@@ -235,12 +227,7 @@ void user_option()
     if (state && flag_vary) { //按键复位且正在进行
     if (!changevol) { //如果按得够久调整音量，便不执行切歌
       changesong(1);
-      pau = 0;
-      Serial.println("Next song.");
-      Serial.print("Time:");
-      Serial.println(millis() - t);
-      Serial.println((int)changevol);
-      Serial.println((int)flag_vary);
+      pau = 0; 
     }
     flag_vary = 0;
     lock = 0; //解锁
@@ -250,7 +237,6 @@ void user_option()
     if (millis() - t > 1000) { //按的时间超过1秒
       vol = MIN(vol + 1, 7);
       music.setVolume(vol);
-      Serial.println("Volume up.");
       t = millis(); //重新开始计时
       changevol = 1; //已经改过音量
     }
@@ -260,10 +246,7 @@ void user_option()
     changevol = 0; //先假定不调音量
     lock = 2; //方向锁开启
   }
-
   }
-  
-
 }
 void randomsong()
 {
