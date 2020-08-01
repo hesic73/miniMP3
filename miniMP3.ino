@@ -1,5 +1,6 @@
 #include "SdFat.h"
-#include "TMRpcm.h"
+#include "TMRpcm.h"//由于要支持长文件名，用SdFat库，需在TMRconf里改宏
+//单声道 16kHZ 8bit ,wav文件放在music文件夹里 名称不可以是中文！！！！！！
 #include "SPI.h"
 #include"U8glib.h"
 /*
@@ -19,30 +20,28 @@
 U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号的构造函数
 #define SDcard 4//SD卡模块
 #define SOUND 9//音频信号输出引脚
-#define BUTTON 2//摇杆的按键
+#define BUTTON 2//暂停
 #define MODE 3//切换播放模式的按键
-#define VX A1 //摇杆方向
-#define VY A2
-//用户行为
-#define PAUSE 0//暂停
-#define PREV 1//前一首
-#define NEXT 2//后一首
-#define VOL_UP 3//调大音量
-#define VOL_DN 4//减小音量
+#define LEFT 6
+#define RIGHT 7
+
 #define MAX(x,y) ((x)>(y)?(x):(y))
 #define MIN(x,y) ((x)<(y)?(x):(y))
 SdFat sd;
 SdFile dir;//根目录,为简便先假定该目录下全是.wav文件，之后可以考虑改为有次级目录
 SdFile wavfile;//音频文件，需要获得它的文件名，不然无法实现按键切歌
-char flag = 0; //用于标定用户摇杆操作是否在进行中
-char debounce = 0; //用于标定切换模式按钮
+long unsigned t;//时间，用于区分长按短按
+char flag_vary = 0; //用于标定切换是否在进行中
+char changevol = 0; //按下是切歌还是调音量
+char lock = 0; //方向锁，即左右键同时只能按一个 0不锁 1左 2右
+char flag_mode = 0; //切换模式
+char flag_pause = 0; //暂停
 char pau = 0; //歌曲是否暂停
-char option;//选项
 char mode;//按键模块切换模式：单曲循环1、顺序播放0、随机播放2
 char vol;//音量,用于显示
 unsigned int totalsong;//当前目录总曲目
 unsigned int cur;//当前曲目
-char name[36];//歌曲名称
+char name[44] = "/music/"; //歌曲名称
 TMRpcm music;
 //常字符
 const uint8_t dan[] U8G_PROGMEM = {
@@ -95,14 +94,14 @@ const uint8_t liang[] U8G_PROGMEM = {
 };
 
 const uint8_t num[8][16] U8G_PROGMEM = { //0-7
-  {0x00, 0x00, 0x00, 0x18, 0x24, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x24, 0x18, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x08, 0x38, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x42, 0x02, 0x04, 0x08, 0x10, 0x20, 0x42, 0x7E, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x02, 0x04, 0x18, 0x04, 0x02, 0x42, 0x42, 0x3C, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x04, 0x0C, 0x0C, 0x14, 0x24, 0x24, 0x44, 0x7F, 0x04, 0x04, 0x1F, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x7E, 0x40, 0x40, 0x40, 0x78, 0x44, 0x02, 0x02, 0x42, 0x44, 0x38, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x18, 0x24, 0x40, 0x40, 0x5C, 0x62, 0x42, 0x42, 0x42, 0x22, 0x1C, 0x00, 0x00}, 
-  {0x00, 0x00, 0x00, 0x7E, 0x42, 0x04, 0x04, 0x08, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00} 
+  {0x00, 0x00, 0x00, 0x18, 0x24, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x24, 0x18, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x08, 0x38, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x3E, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x42, 0x02, 0x04, 0x08, 0x10, 0x20, 0x42, 0x7E, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x3C, 0x42, 0x42, 0x02, 0x04, 0x18, 0x04, 0x02, 0x42, 0x42, 0x3C, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x04, 0x0C, 0x0C, 0x14, 0x24, 0x24, 0x44, 0x7F, 0x04, 0x04, 0x1F, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x7E, 0x40, 0x40, 0x40, 0x78, 0x44, 0x02, 0x02, 0x42, 0x44, 0x38, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x18, 0x24, 0x40, 0x40, 0x5C, 0x62, 0x42, 0x42, 0x42, 0x22, 0x1C, 0x00, 0x00},
+  {0x00, 0x00, 0x00, 0x7E, 0x42, 0x04, 0x04, 0x08, 0x08, 0x10, 0x10, 0x10, 0x10, 0x10, 0x00, 0x00}
 };
 
 void autonext();//当一首歌曲播放完毕时，按照模式选择播放下一首歌
@@ -115,6 +114,8 @@ void setup() {
   //串口初始化
   pinMode(BUTTON, INPUT_PULLUP);
   pinMode(MODE, INPUT_PULLUP);
+  pinMode(LEFT, INPUT_PULLUP);
+  pinMode(RIGHT, INPUT_PULLUP);
   //音乐播放初始化
   music.speakerPin = SOUND;
   Serial.begin(9600);
@@ -130,7 +131,7 @@ void setup() {
   delay(50);
   //文件初始化
   if (!dir.open("/music/", O_RDONLY)) {
-    sd.errorHalt("open root failed");
+    sd.errorHalt("open:");
   }
   totalsong = 0;
   while (wavfile.openNext(&dir, O_RDONLY)) {
@@ -138,15 +139,14 @@ void setup() {
     wavfile.close();
   }
   if (totalsong == 0) {
-    Serial.println("Empty directory.");
-    return ;
+    Serial.println("nil");
+    while (1) ;
   }
   dir.rewind();
   wavfile.openNext(&dir, O_RDONLY);
   cur = 1;
-  wavfile.getName(name, 36);
+  wavfile.getName(name + 7, 36);
   music.play(name);//播放第一首曲子
-
 }
 
 void loop() {
@@ -156,6 +156,7 @@ void loop() {
     user_option();//检测用户操作
     //genfft();//频谱
     draw();//图形界面
+
   } while (u8g.nextPage());
 }
 void autonext()
@@ -172,54 +173,102 @@ void autonext()
     } else if (mode == 2) { //随机播放,有可能是同一首歌
       randomsong();
     }
-    wavfile.getName(name, 36);
+    wavfile.getName(name + 7, 36);
     music.play(name);//单曲循环文件没有变化
   }
 }
 void user_option()
 {
-  //看摇杆状态
-  int x, y;
-  char sw;
-  sw = digitalRead(BUTTON);
-  x = analogRead(VX);
-  y = analogRead(VY);
-  if (!flag) { //如果上次操作已经结束
-    flag = 1;
-    if (!sw) option = PAUSE;
-    else if (x < 400) option = PREV;
-    else if (x > 600) option = NEXT;
-    else if (y > 600) option = VOL_UP;
-    else if (y < 400) option = VOL_DN;
-    else flag = 0;
+  char state;
+  state = digitalRead(MODE);//切换模式
+  if (!flag_mode) { //上次已结束，读取新信息
+    flag_mode = !state;
   }
-  if (flag) { //前一个判断也可能更改flag，所以不能直接else
-    if (sw && (x > 400 && x < 600) && (y > 400 && y < 600)) { //如果这次复位了
-      switch (option) {
-        case PAUSE: music.pause(); pau = !pau; break;
-        case PREV: changesong(0); pau = 0; break;
-        case NEXT: changesong(1); pau = 0; break;
-        case VOL_UP: vol = MAX(vol + 1, 7); music.setVolume(vol); break;
-        case VOL_DN: vol = MIN(vol - 1, 0); music.setVolume(vol); break;
-      }
-      flag = 0;
-    }
+  if (flag_mode && state) {//若是操作开始且复位，执行模式切换
+    mode = (mode + 1) % 3;
+    flag_mode = 0;
+  }
+  state = digitalRead(BUTTON);//暂停,同上
+  if (!flag_pause) {
+    flag_pause = !state;
+  }
+  if (flag_pause && state) {
+    music.pause();
+    pau = !pau;
+    flag_pause = 0;
   }
 
-  //看按键
-  sw = digitalRead(MODE);
-  if (!debounce) { //同摇杆,上次操作已完成，如果按下去，则该次操作开始
-    debounce = !sw;
+
+  state = digitalRead(LEFT);
+  if(lock!=2){
+    if (state && flag_vary) { //按键复位且正在进行
+    if (!changevol) { //如果按得够久调整音量，便不执行切歌
+      changesong(0);
+      pau = 0;
+      Serial.println("Prev song.");
+      Serial.print("Time:");
+      Serial.println(millis() - t);
+      Serial.println((int)changevol);
+      Serial.println((int)flag_vary);
+    }
+    flag_vary = 0; //操作结束
+    lock = 0; //解锁
+  } else if (state && !flag_vary) { //按键复位且已结束
+    //什么也不做
+  } else if (!state && flag_vary) { //按键按下且正在进行中
+    if (millis() - t > 1000) { //按的时间超过1秒
+      vol = MAX(vol - 1, 0);
+      music.setVolume(vol);
+      Serial.println("Volume down.");
+      t = millis(); //重新开始计时
+      changevol = 1; //已经改过音量
+    }
+  } else {//按键按下且已经结束
+    flag_vary = 1; //开始
+    t = millis();
+    changevol = 0; //先假定不调音量
+    lock = 1; //方向锁开启
   }
-  if (debounce && sw) {//若是操作开始且复位，执行模式切换
-    mode = (mode + 1) % 3;
-    debounce = 0;
   }
+  state = digitalRead(RIGHT);
+  if(lock!=1){
+    if (state && flag_vary) { //按键复位且正在进行
+    if (!changevol) { //如果按得够久调整音量，便不执行切歌
+      changesong(1);
+      pau = 0;
+      Serial.println("Next song.");
+      Serial.print("Time:");
+      Serial.println(millis() - t);
+      Serial.println((int)changevol);
+      Serial.println((int)flag_vary);
+    }
+    flag_vary = 0;
+    lock = 0; //解锁
+  } else if (state && !flag_vary) { //按键复位且已结束
+    //什么也不做
+  } else if (!state && flag_vary) { //按键按下且正在进行中
+    if (millis() - t > 1000) { //按的时间超过1秒
+      vol = MIN(vol + 1, 7);
+      music.setVolume(vol);
+      Serial.println("Volume up.");
+      t = millis(); //重新开始计时
+      changevol = 1; //已经改过音量
+    }
+  } else {//按键按下且已经结束
+    flag_vary = 1; //开始
+    t = millis();
+    changevol = 0; //先假定不调音量
+    lock = 2; //方向锁开启
+  }
+
+  }
+  
+
 }
 void randomsong()
 {
   wavfile.close();
-  randomSeed(analogRead(A2));
+  randomSeed(analogRead(A3));
   int temp;
   temp = random(0, totalsong) + 1;
   cur = temp;
@@ -253,7 +302,7 @@ void changesong(int option)
       }
     }
   }
-  wavfile.getName(name, 36);
+  wavfile.getName(name + 7, 36);
   music.play(name);
 }
 void draw()
@@ -266,11 +315,13 @@ void draw()
   if (pau) { //暂停？
     u8g.drawTriangle(115, 2, 115, 14, 125, 8);
   } else {
-    u8g.drawBox(116, 2, 2, 8);
-    u8g.drawBox(122, 2, 2, 8);
+    u8g.drawBox(116, 2, 2, 12);
+    u8g.drawBox(122, 2, 2, 12);
   }
   u8g.drawBitmapP(64 + 8, 0, 2, 16, yin); u8g.drawBitmapP(80 + 8, 0, 2, 16, liang);
   u8g.drawBitmapP(96 + 8, 0, 1, 16, num[vol]);
+  u8g.setFont(u8g_font_fur14);
+  u8g.drawStr(0, 32, name + 7);
   /*
     int i;
     for (i = 0; i < 32; i++) {
@@ -316,5 +367,5 @@ void draw()
       peaks[i] = y[i] ;
     y[i] = peaks[i];
   }
-}
+  }
 */
