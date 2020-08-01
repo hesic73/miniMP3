@@ -3,20 +3,20 @@
 //单声道 16kHZ 8bit ,wav文件放在music文件夹里 名称不可以是中文！！！！！！
 #include "SPI.h"
 #include"U8glib.h"
-/*
-  //频谱相关
-  #include <arduinoFFT.h>
-  #define SAMPLES 64            //Must be a power of 2
-  #define  xres 32      // Total number of  columns in the display, must be <= SAMPLES/2
-  #define  yres 24
-  double vReal[SAMPLES];
-  double vImag[SAMPLES];
-  char data_avgs[xres];
-  char y[xres];
-  char displayvalue;
-  char peaks[xres]={0};
-  arduinoFFT FFT = arduinoFFT();
-*/
+
+//频谱相关
+#include <arduinoFFT.h>
+#define SAMPLES 32            //Must be a power of 2
+#define  xres 16      // Total number of  columns in the display, must be <= SAMPLES/2
+#define  yres 24
+double vReal[SAMPLES];
+double vImag[SAMPLES];
+char data_avgs[xres];
+char y[xres];
+char displayvalue;
+char peaks[xres] = {0};
+arduinoFFT FFT = arduinoFFT();
+
 U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号的构造函数
 #define SDcard 4//SD卡模块
 #define SOUND 9//音频信号输出引脚
@@ -111,6 +111,7 @@ void randomsong();//随机切一首歌
 void draw();//图形界面
 void genfft();//频谱相关，是在网络代码的基础上改的，也不是很懂
 void setup() {
+  Serial.begin(9600);
   //串口初始化
   pinMode(BUTTON, INPUT_PULLUP);
   pinMode(MODE, INPUT_PULLUP);
@@ -148,11 +149,11 @@ void setup() {
 }
 
 void loop() {
+  genfft();//频谱
   u8g.firstPage();
   do {
     autonext();//检测是否需要切歌
     user_option();//检测用户操作
-    //genfft();//频谱
     draw();//图形界面
 
   } while (u8g.nextPage());
@@ -198,54 +199,54 @@ void user_option()
 
 
   state = digitalRead(LEFT);
-  if(lock!=2){
+  if (lock != 2) {
     if (state && flag_vary) { //按键复位且正在进行
-    if (!changevol) { //如果按得够久调整音量，便不执行切歌
-      changesong(0);
-      pau = 0;
+      if (!changevol) { //如果按得够久调整音量，便不执行切歌
+        changesong(0);
+        pau = 0;
+      }
+      flag_vary = 0; //操作结束
+      lock = 0; //解锁
+    } else if (state && !flag_vary) { //按键复位且已结束
+      //什么也不做
+    } else if (!state && flag_vary) { //按键按下且正在进行中
+      if (millis() - t > 1000) { //按的时间超过1秒
+        vol = MAX(vol - 1, 0);
+        music.setVolume(vol);
+        t = millis(); //重新开始计时
+        changevol = 1; //已经改过音量
+      }
+    } else {//按键按下且已经结束
+      flag_vary = 1; //开始
+      t = millis();
+      changevol = 0; //先假定不调音量
+      lock = 1; //方向锁开启
     }
-    flag_vary = 0; //操作结束
-    lock = 0; //解锁
-  } else if (state && !flag_vary) { //按键复位且已结束
-    //什么也不做
-  } else if (!state && flag_vary) { //按键按下且正在进行中
-    if (millis() - t > 1000) { //按的时间超过1秒
-      vol = MAX(vol - 1, 0);
-      music.setVolume(vol);
-      t = millis(); //重新开始计时
-      changevol = 1; //已经改过音量
-    }
-  } else {//按键按下且已经结束
-    flag_vary = 1; //开始
-    t = millis();
-    changevol = 0; //先假定不调音量
-    lock = 1; //方向锁开启
-  }
   }
   state = digitalRead(RIGHT);
-  if(lock!=1){
+  if (lock != 1) {
     if (state && flag_vary) { //按键复位且正在进行
-    if (!changevol) { //如果按得够久调整音量，便不执行切歌
-      changesong(1);
-      pau = 0; 
+      if (!changevol) { //如果按得够久调整音量，便不执行切歌
+        changesong(1);
+        pau = 0;
+      }
+      flag_vary = 0;
+      lock = 0; //解锁
+    } else if (state && !flag_vary) { //按键复位且已结束
+      //什么也不做
+    } else if (!state && flag_vary) { //按键按下且正在进行中
+      if (millis() - t > 1000) { //按的时间超过1秒
+        vol = MIN(vol + 1, 7);
+        music.setVolume(vol);
+        t = millis(); //重新开始计时
+        changevol = 1; //已经改过音量
+      }
+    } else {//按键按下且已经结束
+      flag_vary = 1; //开始
+      t = millis();
+      changevol = 0; //先假定不调音量
+      lock = 2; //方向锁开启
     }
-    flag_vary = 0;
-    lock = 0; //解锁
-  } else if (state && !flag_vary) { //按键复位且已结束
-    //什么也不做
-  } else if (!state && flag_vary) { //按键按下且正在进行中
-    if (millis() - t > 1000) { //按的时间超过1秒
-      vol = MIN(vol + 1, 7);
-      music.setVolume(vol);
-      t = millis(); //重新开始计时
-      changevol = 1; //已经改过音量
-    }
-  } else {//按键按下且已经结束
-    flag_vary = 1; //开始
-    t = millis();
-    changevol = 0; //先假定不调音量
-    lock = 2; //方向锁开启
-  }
   }
 }
 void randomsong()
@@ -305,15 +306,15 @@ void draw()
   u8g.drawBitmapP(96 + 8, 0, 1, 16, num[vol]);
   u8g.setFont(u8g_font_fur14);
   u8g.drawStr(0, 32, name + 7);
-  /*
-    int i;
-    for (i = 0; i < 32; i++) {
-    u8g.drawBox(16 + 3 * i, 60 - y[i], 3, y[i]);
-    }
-  */
+
+  int i;
+  for (i = 0; i < xres; i++) {
+    u8g.drawBox(16 + 6 * i, 60 - y[i], 3, y[i]);
+  }
+
 }
-/*void genfft()
-  {
+void genfft()
+{
   for (int i = 0; i < SAMPLES; i++)
   {
     while (!(ADCSRA & 0x10));       // wait for ADC to complete current conversion ie ADIF bit set
@@ -350,5 +351,4 @@ void draw()
       peaks[i] = y[i] ;
     y[i] = peaks[i];
   }
-  }
-*/
+}
