@@ -24,7 +24,6 @@ U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE | U8G_I2C_OPT_DEV_0); //对应型号�
 #define MODE 3//切换播放模式的按键
 #define LEFT 6
 #define RIGHT 7
-
 #define MAX(x,y) ((x)>(y)?(x):(y))
 #define MIN(x,y) ((x)<(y)?(x):(y))
 SdFat sd;
@@ -40,7 +39,7 @@ char pau = 0; //歌曲是否暂停
 char mode;//按键模块切换模式：单曲循环1、顺序播放0、随机播放2
 char vol;//音量,用于显示
 unsigned int totalsong;//当前目录总曲目
-unsigned int cur;//当前曲目
+volatile unsigned int cur;//当前曲目
 char name[44] = "/music/"; //歌曲名称
 TMRpcm music;
 //常字符
@@ -122,7 +121,7 @@ void setup() {
   if (!sd.begin(4, SD_SCK_MHZ(50))) {
     sd.initErrorHalt();
   }
-  vol = 5;
+  vol = 3;//实际由于功放接的5V（5-12V接口），6声音会失真，7就没声了……
   music.setVolume(vol);
   music.quality(1);
   //音频处理初始化
@@ -136,6 +135,8 @@ void setup() {
   totalsong = 0;
   while (wavfile.openNext(&dir, O_RDONLY)) {
     totalsong++;
+    wavfile.printName(&Serial);
+    Serial.print("\n");
     wavfile.close();
   }
   if (totalsong == 0) {
@@ -251,16 +252,18 @@ void user_option()
 }
 void randomsong()
 {
+  if (totalsong == 1) return; //一个歌切个毛啊
   wavfile.close();
   randomSeed(analogRead(A3));
   int temp;
-  temp = random(0, totalsong) + 1;
+  while ((temp = random(0, totalsong) + 1) == cur);
+
   cur = temp;
   dir.rewind();
   wavfile.openNext(&dir);
   while (--temp) {
     wavfile.close();
-    wavfile.openNext(&dir);
+    while (!wavfile.openNext(&dir));
   }
 }
 void changesong(int option)
@@ -270,23 +273,28 @@ void changesong(int option)
   } else {//单曲循环顺序播放就是简单的加减
     if (option) {
       wavfile.close();
-      cur++;
-      if (!wavfile.openNext(&dir)) {
+      if (cur == totalsong) {
         cur = 1;
         dir.rewind();
-        wavfile.openNext(&dir);
+      } else {
+        cur++;
       }
+      while (!wavfile.openNext(&dir));
     } else {
       cur = (cur == 1) ? totalsong : (cur - 1);
       dir.rewind();
       int i;
       for (i = 0; i < cur; i++) {
         wavfile.close();
-        wavfile.openNext(&dir);
+        while (!wavfile.openNext(&dir));
       }
     }
   }
-  wavfile.getName(name + 7, 36);
+  Serial.print(cur);
+  Serial.print('\t');
+  while (!wavfile.getName(name + 7, 36));
+  wavfile.printName(&Serial);
+  Serial.print('\n');
   music.play(name);
 }
 void draw()
@@ -315,6 +323,7 @@ void draw()
 }
 void genfft()
 {
+  if (pau) return ; //如果暂停波纹不动显得比较真实。实际上即使暂停，连接引脚信号会有波动，这样就显得音频频谱像假的一样……
   for (int i = 0; i < SAMPLES; i++)
   {
     while (!(ADCSRA & 0x10));       // wait for ADC to complete current conversion ie ADIF bit set

@@ -12,3 +12,12 @@
 - 频谱采样
   - 参考[Arduino实现32分频音频频谱显示器]( https://arduino.nxez.com/2019/03/28/arduino-32-frequency-audio-spectrum-display.html )。
   - 代码部分只是略作修改，音频信号直接由功放正极代替耳机+转换头。
+
+
+
+---
+
+# 已知BUG
+- OLED屏会随机出现长条，似乎是硬件问题。
+- 打开某些文件等操作会随机性失败，用while(!wavfile.openNext(&dir));可以应付大多数情况。
+- 短时间内多次切歌会出现异常行为，上一条不能完全解决，而且cur值会不正常地跳变，考虑对切歌操作最小时间间隔加以限制。
