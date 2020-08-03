@@ -41,6 +41,8 @@ char vol;//音量,用于显示
 unsigned int totalsong;//当前目录总曲目
 volatile unsigned int cur;//当前曲目
 char name[44] = "/music/"; //歌曲名称
+#define MAXSONG 25
+uint16_t index[MAXSONG];//用于储存歌曲的index
 TMRpcm music;
 //常字符
 const uint8_t dan[] U8G_PROGMEM = {
@@ -134,12 +136,16 @@ void setup() {
   }
   totalsong = 0;
   while (wavfile.openNext(&dir, O_RDONLY)) {
-    totalsong++;
     wavfile.printName(&Serial);
+    index[totalsong++]=wavfile.dirIndex();
+    if(totalsong>100){
+      Serial.println("Too mang songs.");
+    }
     Serial.print("\n");
     wavfile.close();
   }
   if (totalsong == 0) {
+    Serial.println("Empty dir");
     while (1) ;
   }
   dir.rewind();
@@ -164,12 +170,12 @@ void autonext()
   if (!music.isPlaying()) { //如果这首歌播完了，选择播放的下一首
     if (mode == 0) { //顺序播放
       wavfile.close();
-      cur++;
-      if (!wavfile.openNext(&dir)) {
+     if (cur == totalsong) {
         cur = 1;
-        dir.rewind();
-        wavfile.openNext(&dir);
+      } else {
+        cur++;
       }
+       while(!wavfile.open(&dir,index[cur-1], O_RDONLY)) ;
     } else if (mode == 2) { //随机播放,有可能是同一首歌
       randomsong();
     }
@@ -254,17 +260,12 @@ void randomsong()
 {
   if (totalsong == 1) return; //一个歌切个毛啊
   wavfile.close();
-  randomSeed(analogRead(A3));
+  randomSeed(millis());
   int temp;
-  while ((temp = random(0, totalsong) + 1) == cur);
-
+  temp = random(0, totalsong) + 1;
+  Serial.println(temp);
   cur = temp;
-  dir.rewind();
-  wavfile.openNext(&dir);
-  while (--temp) {
-    wavfile.close();
-    while (!wavfile.openNext(&dir));
-  }
+  while(!wavfile.open(&dir,index[cur-1], O_RDONLY)) ;
 }
 void changesong(int option)
 {
@@ -275,19 +276,15 @@ void changesong(int option)
       wavfile.close();
       if (cur == totalsong) {
         cur = 1;
-        dir.rewind();
       } else {
         cur++;
       }
-      while (!wavfile.openNext(&dir));
+      while(!wavfile.open(&dir,index[cur-1], O_RDONLY)) ;
     } else {
       cur = (cur == 1) ? totalsong : (cur - 1);
       dir.rewind();
-      int i;
-      for (i = 0; i < cur; i++) {
-        wavfile.close();
-        while (!wavfile.openNext(&dir));
-      }
+      wavfile.close();
+      while(!wavfile.open(&dir,index[cur-1], O_RDONLY)) ;
     }
   }
   Serial.print(cur);
